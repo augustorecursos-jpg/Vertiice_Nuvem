@@ -1,342 +1,885 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  onSnapshot, 
-  query,
-  addDoc,
-  deleteDoc,
-  updateDoc
-} from 'firebase/firestore';
-import { 
-  Plus, 
-  Trash2, 
-  TrendingUp, 
-  TrendingDown, 
-  Wallet, 
-  Calendar, 
-  CheckCircle2, 
-  Circle, 
-  ChevronDown, 
-  ChevronUp,
-  Cloud,
-  RefreshCw,
-  LayoutDashboard
-} from 'lucide-react';
-
-// Firebase configuration
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'vertice-financeiro-v2';
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [transactions, setTransactions] = useState([]);
-  const [syncStatus, setSyncStatus] = useState('connecting');
-  
-  // Form State
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [type, setType] = useState('despesa');
-  const [category, setCategory] = useState('Moradia');
-  const [isAnnualView, setIsAnnualView] = useState(false);
-  const [expandedCategory, setExpandedCategory] = useState(null);
-
-  const categories = {
-    receita: ['Salário', 'Investimentos', 'Extra'],
-    despesa: ['Moradia', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Outros'],
-    patrimonio: ['Reserva', 'Ações/FIIs', 'Cripto', 'Outros']
-  };
-
-  // Auth Initialization
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        setSyncStatus('error');
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Firestore Real-time Sync
-  useEffect(() => {
-    if (!user) return;
-    const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
-    setSyncStatus('syncing');
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vértice - Gestão de Fluxo Inteligente</title>
     
-    const unsubscribe = onSnapshot(query(colRef), (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setTransactions(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
-      setSyncStatus('synced');
-    }, () => setSyncStatus('error'));
+    <!-- Bibliotecas Externas -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        
+        :root { 
+            --accent: #6366f1; 
+            --bg-dark: #050505; 
+            --input-bg: rgba(255, 255, 255, 0.03);
+            --dropdown-bg: #121212;
+        }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-dark);
+            color: #f4f4f5;
+            margin: 0;
+            background-image: 
+                radial-gradient(circle at 15% 25%, rgba(99, 102, 241, 0.15) 0%, transparent 45%),
+                radial-gradient(circle at 85% 75%, rgba(16, 185, 129, 0.1) 0%, transparent 45%);
+            background-attachment: fixed;
+            overflow-x: hidden;
+        }
+        .bubble-card {
+            background: rgba(25, 25, 25, 0.4);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 32px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .bubble-card:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+        input, select {
+            background: var(--input-bg) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+            border-radius: 16px !important;
+            transition: all 0.3s ease;
+            appearance: none;
+        }
+        select option {
+            background-color: var(--dropdown-bg);
+            color: white;
+        }
+        input:focus, select:focus {
+            border-color: var(--accent) !important;
+            outline: none;
+            background: rgba(255, 255, 255, 0.07) !important;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+        /* Checkbox Customizado */
+        input[type="checkbox"] {
+            appearance: none;
+            background-color: var(--input-bg);
+            margin: 0;
+            font: inherit;
+            color: currentColor;
+            width: 1.15em;
+            height: 1.15em;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            border-radius: 4px !important;
+            display: grid;
+            place-content: center;
+            cursor: pointer;
+        }
+        input[type="checkbox"]::before {
+            content: "";
+            width: 0.65em;
+            height: 0.65em;
+            transform: scale(0);
+            transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em white;
+            transform-origin: center;
+            clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        }
+        input[type="checkbox"]:checked::before {
+            transform: scale(1);
+        }
+        input[type="checkbox"]:checked {
+            background-color: var(--accent) !important;
+            border-color: var(--accent) !important;
+        }
 
-    return () => unsubscribe();
-  }, [user]);
+        .tab-btn {
+            position: relative;
+            padding: 10px 20px;
+            color: #71717a;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+        }
+        .tab-btn.active { color: #fff; }
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 24px;
+            height: 3px;
+            background: var(--accent);
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 1);
+        }
+        .is-paid { opacity: 0.35; filter: grayscale(0.8); }
+        
+        .btn-primary {
+            background-color: var(--accent);
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.5);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover { opacity: 0.9; transform: scale(1.02); }
+        .animate-section { animation: slideIn 0.5s ease-out forwards; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .hidden { display: none !important; }
+        
+        .yearly-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+        }
+        .yearly-table th {
+            padding: 12px;
+            text-align: left;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #71717a;
+            letter-spacing: 0.1em;
+        }
+        .yearly-table td {
+            padding: 14px 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .yearly-table tr.row-category td:first-child { border-radius: 16px 0 0 16px; border-left: 1px solid rgba(255, 255, 255, 0.05); }
+        .yearly-table tr.row-category td:last-child { border-radius: 0 16px 16px 0; border-right: 1px solid rgba(255, 255, 255, 0.05); }
+        
+        .row-detail td {
+            background: rgba(255, 255, 255, 0.005);
+            font-size: 11px;
+            padding: 8px 12px;
+            color: #a1a1aa;
+            border: none;
+        }
+        .expand-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 4px;
+            color: var(--accent);
+            font-size: 12px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
 
-  // Financial Calculations
-  const stats = useMemo(() => {
-    return transactions.reduce((acc, curr) => {
-      const val = parseFloat(curr.amount) || 0;
-      if (curr.type === 'receita') acc.incomes += val;
-      else if (curr.type === 'despesa') {
-        if (curr.completed) acc.paid += val;
-        else acc.toPay += val;
-      } else if (curr.type === 'patrimonio') acc.equity += val;
-      return acc;
-    }, { incomes: 0, paid: 0, toPay: 0, equity: 0 });
-  }, [transactions]);
-
-  // Actions
-  const handleAddTransaction = async (e) => {
-    e.preventDefault();
-    if (!description || !amount || !user) return;
-
-    try {
-      const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
-      await addDoc(colRef, {
-        description,
-        amount: parseFloat(amount),
-        type,
-        category,
-        date: new Date().toISOString(),
-        completed: false
-      });
-      setDescription('');
-      setAmount('');
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const toggleStatus = async (item) => {
-    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', item.id);
-    await updateDoc(docRef, { completed: !item.completed });
-  };
-
-  const deleteTransaction = async (id) => {
-    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id);
-    await deleteDoc(docRef);
-  };
-
-  if (loading) return (
-    <div className="h-screen flex items-center justify-center bg-slate-950 text-white">
-      <RefreshCw className="animate-spin mr-2" /> Carregando sua nuvem financeira...
+        /* Modal Overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body class="pb-24">
+    <!-- MODAL DE TERMOS DE USO -->
+    <div id="terms-modal" class="modal-overlay hidden">
+        <div class="bubble-card max-w-2xl w-full p-8 max-h-[80vh] overflow-y-auto">
+            <h2 class="text-2xl font-bold text-white mb-4 uppercase tracking-wider">Termos de Uso e Política</h2>
+            <div class="text-zinc-400 text-sm space-y-4 leading-relaxed text-justify">
+                <p>Bem-vindo ao <strong>Vértice</strong>, um aplicativo facilitador de controle financeiro desenvolvido pela <strong>Arconsultoria</strong>.</p>
+                <p>Ao utilizar este aplicativo, você concorda expressamente que:</p>
+                <ol class="list-decimal pl-5 space-y-2">
+                    <li>O Vértice é uma ferramenta destinada exclusivamente ao <strong>registro e organização</strong> de informações financeiras inseridas pelo próprio usuário.</li>
+                    <li>A Arconsultoria <strong>não realiza movimentações financeiras</strong>, custódia de valores, transferências ou pagamentos através desta plataforma.</li>
+                    <li>A Arconsultoria <strong>não se responsabiliza</strong> pelas decisões financeiras tomadas pelo usuário com base nos dados aqui organizados, nem por eventuais prejuízos decorrentes do mau uso de seus próprios recursos.</li>
+                    <li>O usuário é o único responsável pela veracidade dos dados inseridos.</li>
+                </ol>
+                <p class="mt-4 border-t border-white/10 pt-4">O não pagamento da mensalidade de uso do software poderá acarretar no bloqueio temporário do acesso até a regularização.</p>
+            </div>
+            <div class="mt-8 flex justify-end">
+                <button onclick="closeTerms()" class="btn-primary px-8 py-3 rounded-xl font-bold uppercase text-xs text-white">Entendi e Fechar</button>
+            </div>
+        </div>
     </div>
-  );
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-10">
-      {/* Navbar */}
-      <nav className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
-              <LayoutDashboard size={20} className="text-white" />
+    <!-- TELA DE AUTH -->
+    <section id="auth-screen" class="min-h-screen flex items-center justify-center p-6">
+        <div class="bubble-card w-full max-w-md p-10 space-y-6 animate-section text-center">
+            <div class="w-20 h-20 mx-auto rounded-[2rem] bg-indigo-600 flex items-center justify-center shadow-2xl mb-6 ring-4 ring-indigo-600/20">
+                <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
             </div>
-            <span className="font-bold text-xl tracking-tight text-white">Vértice <span className="text-indigo-400">Financeiro</span></span>
-          </div>
-          <div className="flex items-center gap-3 bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-700">
-            {syncStatus === 'synced' ? <Cloud size={14} className="text-emerald-400" /> : <RefreshCw size={14} className="animate-spin text-indigo-400" />}
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nuvem Ativa</span>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-6xl mx-auto p-4 lg:p-8 space-y-8">
-        {/* Dashboard Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <TrendingUp size={64} className="text-emerald-500" />
-            </div>
-            <p className="text-slate-400 text-sm font-medium">Receita Mensal</p>
-            <h3 className="text-3xl font-bold text-white mt-1">R$ {stats.incomes.toLocaleString('pt-BR')}</h3>
-            <div className="mt-4 flex items-center gap-2 text-emerald-400 text-xs font-bold">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Disponível
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <TrendingDown size={64} className="text-rose-500" />
-            </div>
-            <p className="text-slate-400 text-sm font-medium">Contas a Pagar</p>
-            <h3 className="text-3xl font-bold text-white mt-1 text-rose-400">R$ {stats.toPay.toLocaleString('pt-BR')}</h3>
-            <p className="text-[10px] text-slate-500 mt-4 uppercase font-bold tracking-widest">Pago: R$ {stats.paid.toLocaleString('pt-BR')}</p>
-          </div>
-
-          <div className="bg-indigo-600/10 border border-indigo-500/30 p-6 rounded-3xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Wallet size={64} className="text-indigo-400" />
-            </div>
-            <p className="text-indigo-300 text-sm font-medium">Patrimônio Acumulado</p>
-            <h3 className="text-3xl font-bold text-white mt-1">R$ {stats.equity.toLocaleString('pt-BR')}</h3>
-            <div className="mt-4 bg-indigo-500/20 w-fit px-2 py-1 rounded text-[10px] font-bold text-indigo-300 uppercase">Foco em Crescimento</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Form Side */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl">
-              <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-                <Plus className="text-indigo-500" /> Novo Lançamento
-              </h2>
-              <form onSubmit={handleAddTransaction} className="space-y-4">
-                <div className="flex p-1 bg-slate-950 rounded-2xl border border-slate-800">
-                  {['receita', 'despesa', 'patrimonio'].map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => { setType(t); setCategory(categories[t][0]); }}
-                      className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-all ${type === t ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                      {t}
+            <h1 class="text-4xl font-black text-white uppercase tracking-tighter">Vértice</h1>
+            <p id="auth-subtitle" class="text-zinc-500 text-sm font-medium italic">Gestão Financeira de Alto Padrão</p>
+            
+            <div id="auth-form" class="space-y-4 pt-4 text-left">
+                <div id="register-fields" class="hidden space-y-4">
+                    <input type="text" id="reg-name" placeholder="Nome Completo" class="w-full p-4 text-sm">
+                    <input type="text" id="reg-cpf" placeholder="CPF" class="w-full p-4 text-sm">
+                    <input type="text" id="reg-phone" placeholder="Telefone" class="w-full p-4 text-sm">
+                    
+                    <!-- Termos de Uso -->
+                    <div class="flex items-start gap-3 px-2">
+                        <input type="checkbox" id="terms-check" class="mt-1">
+                        <label for="terms-check" class="text-xs text-zinc-400 select-none cursor-pointer">
+                            Li e concordo com os <span onclick="openTerms()" class="text-indigo-400 font-bold hover:underline cursor-pointer">Termos de Uso e Política</span> da Arconsultoria.
+                        </label>
+                    </div>
+                </div>
+                
+                <input type="email" id="auth-email" placeholder="E-mail profissional" class="w-full p-4 text-sm">
+                <input type="password" id="auth-pass" placeholder="Senha de acesso" class="w-full p-4 text-sm">
+                
+                <button id="auth-main-btn" onclick="handleAuth()" class="btn-primary w-full py-4 text-white font-bold rounded-2xl text-xs uppercase tracking-widest mt-4">Login</button>
+                
+                <div class="text-center pt-4 flex flex-col gap-3">
+                    <button id="auth-toggle-btn" onclick="toggleAuthMode()" class="text-[10px] text-zinc-500 hover:text-indigo-400 font-bold uppercase tracking-widest transition-colors">
+                        Não tem conta? Cadastre-se
                     </button>
-                  ))}
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Descrição</label>
-                  <input
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors"
-                    placeholder="Ex: Aluguel, Salário..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Valor</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors"
-                      placeholder="0,00"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Categoria</label>
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors appearance-none"
-                    >
-                      {categories[type].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-indigo-600/20 mt-4"
-                >
-                  Adicionar à Nuvem
-                </button>
-              </form>
             </div>
-          </div>
-
-          {/* List Side */}
-          <div className="lg:col-span-8">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setIsAnnualView(false)}
-                  className={`text-sm font-bold uppercase tracking-widest pb-1 transition-all ${!isAnnualView ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-slate-500'}`}
-                >
-                  Transações
-                </button>
-                <button 
-                  onClick={() => setIsAnnualView(true)}
-                  className={`text-sm font-bold uppercase tracking-widest pb-1 transition-all ${isAnnualView ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-slate-500'}`}
-                >
-                  Visão Anual
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {transactions.length === 0 ? (
-                <div className="text-center py-20 bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-800">
-                  <Calendar className="mx-auto w-12 h-12 text-slate-700 mb-4" />
-                  <p className="text-slate-500 font-medium">Nenhum lançamento encontrado na nuvem.</p>
-                </div>
-              ) : (
-                transactions.map((item) => (
-                  <div 
-                    key={item.id}
-                    className="group bg-slate-900 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl flex items-center justify-between transition-all"
-                  >
-                    <div className="flex items-center gap-4">
-                      <button 
-                        onClick={() => toggleStatus(item)}
-                        className={`transition-colors ${item.completed ? 'text-emerald-500' : 'text-slate-600 hover:text-indigo-400'}`}
-                      >
-                        {item.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                      </button>
-                      <div>
-                        <h4 className={`font-bold ${item.completed ? 'line-through text-slate-500' : 'text-white'}`}>{item.description}</h4>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                            item.type === 'receita' ? 'bg-emerald-500/10 text-emerald-500' : 
-                            item.type === 'patrimonio' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-rose-500/10 text-rose-500'
-                          }`}>
-                            {item.category}
-                          </span>
-                          <span className="text-[10px] text-slate-500 font-medium">
-                            {new Date(item.date).toLocaleDateString('pt-BR')}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-6">
-                      <span className={`font-bold text-lg ${
-                        item.type === 'receita' ? 'text-emerald-400' : 
-                        item.type === 'patrimonio' ? 'text-indigo-400' : 'text-slate-200'
-                      }`}>
-                        {item.type === 'despesa' ? '-' : '+'} R$ {item.amount.toLocaleString('pt-BR')}
-                      </span>
-                      <button 
-                        onClick={() => deleteTransaction(item.id)}
-                        className="opacity-0 group-hover:opacity-100 p-2 text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
-      </main>
+    </section>
+
+    <!-- PAINEL PRINCIPAL -->
+    <div id="main-content" class="hidden">
+        <header class="p-6 bg-black/50 backdrop-blur-2xl sticky top-0 z-50 border-b border-white/10">
+            <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                    </div>
+                    <div>
+                        <h1 class="text-sm font-black text-white uppercase tracking-tight">Vértice</h1>
+                        <span id="user-display" class="text-[9px] text-indigo-400 font-bold uppercase tracking-widest">Aguardando...</span>
+                    </div>
+                </div>
+                
+                <div id="date-controls" class="flex items-center bg-white/5 px-4 py-2 rounded-2xl border border-white/10 gap-3">
+                    <select id="select-month" onchange="updateDateContext()" class="!bg-transparent !border-none text-[11px] font-bold uppercase cursor-pointer">
+                        <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+                        <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+                        <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+                        <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                    </select>
+                    <input type="number" id="select-year" onchange="updateDateContext()" value="2026" class="!bg-transparent !border-none w-16 text-[11px] font-bold">
+                </div>
+                <nav class="flex gap-4 items-center">
+                    <button onclick="switchTab('monthly')" id="tab-monthly" class="tab-btn active">Lançamentos</button>
+                    <button onclick="switchTab('yearly')" id="tab-yearly" class="tab-btn">Visão Anual</button>
+                    <!-- BOTÃO ADMIN (Escondido por padrão) -->
+                    <button onclick="switchTab('admin')" id="tab-admin" class="tab-btn hidden text-rose-500">Gestão de Usuários</button>
+                    
+                    <button onclick="logout()" class="ml-2 text-zinc-500 hover:text-rose-400 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </button>
+                </nav>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto p-6 md:p-10">
+            <!-- ABA MENSAL -->
+            <section id="section-monthly" class="space-y-10 animate-section">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                    <div class="bubble-card p-6 border-l-4 border-l-emerald-500">
+                        <p class="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Total Recebido</p>
+                        <h2 id="display-income" class="text-2xl font-bold text-emerald-400">R$ 0,00</h2>
+                    </div>
+                    <div class="bubble-card p-6 border-l-4 border-l-amber-500">
+                        <p class="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Patrimônio</p>
+                        <h2 id="display-equity" class="text-2xl font-bold text-amber-400">R$ 0,00</h2>
+                    </div>
+                    <div class="bubble-card p-6 border-l-4 border-l-indigo-500">
+                        <p class="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Contas a Pagar</p>
+                        <h2 id="display-total" class="text-2xl font-bold text-white">R$ 0,00</h2>
+                    </div>
+                    <div class="bubble-card p-6 border-l-4 border-l-blue-400">
+                        <p class="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Contas Pagas</p>
+                        <h2 id="display-paid" class="text-2xl font-bold text-blue-400">R$ 0,00</h2>
+                    </div>
+                    <div class="bubble-card p-6 border-l-4 border-l-rose-500">
+                        <p class="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Falta Pagar</p>
+                        <h2 id="display-pending" class="text-2xl font-bold text-rose-400">R$ 0,00</h2>
+                    </div>
+                    <div id="card-balance" class="bubble-card p-6 border-l-4 border-l-zinc-500">
+                        <p class="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Saldo Líquido</p>
+                        <h2 id="display-balance" class="text-2xl font-bold text-white">R$ 0,00</h2>
+                    </div>
+                </div>
+
+                <div class="bubble-card p-8">
+                    <div class="flex justify-between items-center mb-8">
+                        <h3 id="form-title" class="text-[10px] font-black uppercase text-indigo-400 tracking-[0.2em]">Novo Registro Financeiro</h3>
+                        <button onclick="clearAllData()" class="flex items-center gap-2 text-[10px] font-black uppercase text-rose-400/60 hover:text-rose-400 transition-all px-4 py-2 bg-rose-400/5 rounded-xl border border-rose-400/10">
+                            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            Limpar Tudo
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
+                        <div class="md:col-span-3">
+                            <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Descrição</label>
+                            <input type="text" id="desc-input" placeholder="Ex: Aluguel..." class="w-full p-4 text-sm">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Valor (R$)</label>
+                            <input type="number" id="val-input" placeholder="0,00" class="w-full p-4 text-sm">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Mês</label>
+                            <select id="input-month" class="w-full p-4 text-sm">
+                                <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
+                                <option value="3">Abril</option><option value="4">Maio</option><option value="5">Junho</option>
+                                <option value="6">Julho</option><option value="7">Agosto</option><option value="8">Setembro</option>
+                                <option value="9">Outubro</option><option value="10">Novembro</option><option value="11">Dezembro</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Ano</label>
+                            <input type="number" id="input-year" value="2026" class="w-full p-4 text-sm">
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Categoria</label>
+                            <select id="category-input" class="w-full p-4 text-sm">
+                                <option value="Despesa Fixa">Despesa Fixa</option>
+                                <option value="Despesa Variável">Despesa Variável</option>
+                                <option value="Investimento">Investimento</option>
+                                <option value="Poupança">Poupança</option>
+                                <option value="Renda">Renda</option>
+                            </select>
+                        </div>
+                        
+                        <div class="md:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div>
+                                <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Recorrência</label>
+                                <select id="recurrence-input" onchange="toggleParcelField()" class="w-full p-4 text-sm">
+                                    <option value="once">Apenas o mês selecionado</option>
+                                    <option value="monthly">Repetir Mensalmente</option>
+                                    <option value="installment">Parcelamento</option>
+                                </select>
+                            </div>
+                            <div id="parcel-container" class="hidden animate-section">
+                                <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Nº de Parcelas</label>
+                                <input type="number" id="parcel-input" value="2" min="2" class="w-full p-4 text-sm">
+                            </div>
+                        </div>
+                        <div class="md:col-span-12 flex justify-end gap-3 pt-4">
+                            <button id="cancel-edit-btn" onclick="resetForm()" class="hidden px-8 py-4 text-zinc-400 font-bold rounded-2xl text-[10px] uppercase tracking-widest">Cancelar Edição</button>
+                            <button id="confirm-btn" onclick="addEntry()" class="btn-primary px-12 py-4 text-white font-bold rounded-2xl text-[10px] uppercase tracking-widest">Confirmar Lançamento</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LISTAGEM COM ORDENAÇÃO -->
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center px-4">
+                        <h4 class="text-[10px] font-black uppercase text-zinc-500 tracking-[0.2em]">Fluxo de Caixa Mensal</h4>
+                        <div class="flex items-center gap-3">
+                            <span class="text-[9px] font-bold text-zinc-600 uppercase">Ordenar por Valor:</span>
+                            <select id="sort-order" onchange="renderMonthly()" class="!py-1 !px-3 !text-[10px] !rounded-lg !w-auto">
+                                <option value="newest">Mais Recentes</option>
+                                <option value="desc">Maior Valor</option>
+                                <option value="asc">Menor Valor</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="monthly-list" class="space-y-4"></div>
+                </div>
+            </section>
+
+            <!-- ABA ANUAL -->
+            <section id="section-yearly" class="hidden space-y-8 animate-section">
+                <div class="bubble-card p-10">
+                    <div class="flex justify-between items-center mb-10">
+                        <h3 class="text-[11px] font-black uppercase text-indigo-400 tracking-[0.2em]">Análise Consolidada <span id="yearly-year-title">2026</span></h3>
+                        <div class="flex gap-2">
+                             <span class="text-[9px] text-zinc-500 font-bold uppercase py-1 px-3 bg-white/5 rounded-full">Clique nas categorias para detalhar</span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="yearly-table">
+                            <thead>
+                                <tr>
+                                    <th class="min-w-[200px]">Fluxo / Categoria</th>
+                                    <th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th>
+                                    <th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th>
+                                    <th class="text-white">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="yearly-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ABA ADMINISTRAÇÃO -->
+            <section id="section-admin" class="hidden space-y-8 animate-section">
+                <div class="bubble-card p-10">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-[11px] font-black uppercase text-rose-400 tracking-[0.2em]">Gestão de Usuários e Assinaturas</h3>
+                    </div>
+                    <p class="text-xs text-zinc-400 mb-8">Administre o acesso dos usuários ao sistema. Usuários bloqueados não conseguirão realizar login.</p>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-zinc-400">
+                            <thead>
+                                <tr class="border-b border-white/10 text-[10px] uppercase font-bold text-zinc-500">
+                                    <th class="pb-3 pl-2">Nome</th>
+                                    <th class="pb-3">E-mail</th>
+                                    <th class="pb-3">CPF</th>
+                                    <th class="pb-3">Telefone</th>
+                                    <th class="pb-3 text-center">Status</th>
+                                    <th class="pb-3 text-right pr-2">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-users-list">
+                                <!-- Preenchido via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+        </main>
     </div>
-  );
-}
+
+    <script>
+        // --- CONFIGURAÇÃO DE ADMIN EXCLUSIVA ---
+        const MASTER_EMAIL = "arconsultoriaa@outlook.com"; 
+
+        let currentUser = null;
+        let transactions = [];
+        let isRegisterMode = false;
+        let editingId = null;
+        let expandedCategories = new Set(); 
+        let selectedMonth = new Date().getMonth();
+        let selectedYear = new Date().getFullYear();
+
+        window.onload = () => {
+            document.getElementById('select-month').value = selectedMonth;
+            document.getElementById('select-year').value = selectedYear;
+            document.getElementById('input-month').value = selectedMonth;
+            document.getElementById('input-year').value = selectedYear;
+        };
+
+        // --- FUNÇÕES DE MODAL TERMOS ---
+        function openTerms() {
+            document.getElementById('terms-modal').classList.remove('hidden');
+        }
+        function closeTerms() {
+            document.getElementById('terms-modal').classList.add('hidden');
+        }
+
+        function toggleAuthMode() {
+            isRegisterMode = !isRegisterMode;
+            const regFields = document.getElementById('register-fields');
+            const mainBtn = document.getElementById('auth-main-btn');
+            const toggleBtn = document.getElementById('auth-toggle-btn');
+            const subtitle = document.getElementById('auth-subtitle');
+            if (isRegisterMode) {
+                regFields.classList.remove('hidden');
+                mainBtn.innerText = "Criar Minha Conta";
+                toggleBtn.innerText = "Já tem conta? Faça Login";
+                subtitle.innerText = "Cadastre-se para começar sua gestão";
+            } else {
+                regFields.classList.add('hidden');
+                mainBtn.innerText = "Login";
+                toggleBtn.innerText = "Não tem conta? Cadastre-se";
+                subtitle.innerText = "Gestão Financeira de Alto Padrão";
+            }
+        }
+
+        function handleAuth() {
+            const email = document.getElementById('auth-email').value.trim();
+            const pass = document.getElementById('auth-pass').value;
+            if (!email || !pass) {
+                alert("Preencha e-mail e senha.");
+                return;
+            }
+
+            const users = JSON.parse(localStorage.getItem('vertice_users') || '{}');
+
+            if (isRegisterMode) {
+                const name = document.getElementById('reg-name').value;
+                const termsChecked = document.getElementById('terms-check').checked;
+                
+                if (!name) { alert("Preencha o nome."); return; }
+                if (!termsChecked) { alert("Você precisa aceitar os Termos de Uso e Política para se cadastrar."); return; }
+                
+                if (users[email]) {
+                    alert("Este e-mail já está cadastrado.");
+                    return;
+                }
+                
+                users[email] = { 
+                    pass, 
+                    name, 
+                    cpf: document.getElementById('reg-cpf').value, 
+                    phone: document.getElementById('reg-phone').value,
+                    blocked: false // Novo usuário nasce ativo
+                };
+                localStorage.setItem('vertice_users', JSON.stringify(users));
+                alert("Conta criada com sucesso!");
+                toggleAuthMode();
+            } else {
+                // Modo Login
+                if (users[email] && users[email].pass === pass) {
+                    // VERIFICAÇÃO DE BLOQUEIO
+                    if (users[email].blocked) {
+                        alert("Seu acesso está temporariamente suspenso. Entre em contato com a Arconsultoria para regularizar sua mensalidade.");
+                        return;
+                    }
+                    processLogin(email, users[email].name);
+                } else {
+                    alert("Dados de acesso incorretos.");
+                }
+            }
+        }
+
+        function processLogin(email, name) {
+            currentUser = { email, name };
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            
+            // Regra de Admin exclusiva para o seu e-mail
+            const isAdmin = (email.toLowerCase() === MASTER_EMAIL.toLowerCase());
+            const roleText = isAdmin ? "MASTER ADMINISTRADOR" : "USUÁRIO STANDARD";
+            
+            // Mostrar botão de gestão se for admin
+            if (isAdmin) {
+                document.getElementById('tab-admin').classList.remove('hidden');
+            }
+
+            document.getElementById('user-display').innerHTML = `
+                ${(name || email.split('@')[0]).toUpperCase()} 
+                <span class="block text-[7px] text-indigo-300 opacity-60">${roleText}</span>
+            `;
+
+            loadData();
+            renderMonthly();
+        }
+
+        function logout() { location.reload(); }
+
+        function updateDateContext() {
+            selectedMonth = parseInt(document.getElementById('select-month').value);
+            selectedYear = parseInt(document.getElementById('select-year').value);
+            renderMonthly();
+            if(!document.getElementById('section-yearly').classList.contains('hidden')) renderYearly();
+        }
+
+        function toggleParcelField() {
+            const recurrence = document.getElementById('recurrence-input').value;
+            document.getElementById('parcel-container').classList.toggle('hidden', recurrence !== 'installment');
+        }
+
+        function switchTab(tab) {
+            document.getElementById('section-monthly').classList.toggle('hidden', tab !== 'monthly');
+            document.getElementById('section-yearly').classList.toggle('hidden', tab !== 'yearly');
+            document.getElementById('section-admin').classList.toggle('hidden', tab !== 'admin');
+            
+            document.getElementById('tab-monthly').classList.toggle('active', tab === 'monthly');
+            document.getElementById('tab-yearly').classList.toggle('active', tab === 'yearly');
+            
+            // Esconder controles de data na aba admin
+            document.getElementById('date-controls').style.visibility = (tab === 'admin') ? 'hidden' : 'visible';
+            
+            // Lógica específica por aba
+            if(tab === 'yearly') renderYearly();
+            if(tab === 'admin') renderAdminPanel();
+        }
+
+        // --- LÓGICA DO PAINEL ADMIN ---
+        function renderAdminPanel() {
+            const list = document.getElementById('admin-users-list');
+            list.innerHTML = '';
+            
+            const users = JSON.parse(localStorage.getItem('vertice_users') || '{}');
+            
+            Object.keys(users).forEach(email => {
+                // Não mostra o próprio admin na lista de bloqueio para evitar auto-block
+                if (email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return;
+
+                const user = users[email];
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-white/5 hover:bg-white/5 transition-colors";
+                
+                const statusBadge = user.blocked 
+                    ? `<span class="bg-rose-500/20 text-rose-400 px-2 py-1 rounded text-[10px] font-bold uppercase">Bloqueado</span>`
+                    : `<span class="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded text-[10px] font-bold uppercase">Ativo</span>`;
+                
+                const actionBtn = user.blocked
+                    ? `<button onclick="toggleUserStatus('${email}')" class="text-[10px] font-bold uppercase bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1 rounded transition-colors">Reativar</button>`
+                    : `<button onclick="toggleUserStatus('${email}')" class="text-[10px] font-bold uppercase bg-rose-500 hover:bg-rose-400 text-white px-3 py-1 rounded transition-colors">Bloquear</button>`;
+
+                tr.innerHTML = `
+                    <td class="py-4 pl-2 font-medium text-white">${user.name || 'Sem nome'}</td>
+                    <td class="py-4">${email}</td>
+                    <td class="py-4">${user.cpf || '-'}</td>
+                    <td class="py-4">${user.phone || '-'}</td>
+                    <td class="py-4 text-center">${statusBadge}</td>
+                    <td class="py-4 text-right pr-2">${actionBtn}</td>
+                `;
+                list.appendChild(tr);
+            });
+            
+            if (list.innerHTML === '') {
+                list.innerHTML = `<tr><td colspan="6" class="text-center py-8 opacity-50">Nenhum outro usuário cadastrado.</td></tr>`;
+            }
+        }
+
+        function toggleUserStatus(email) {
+            const users = JSON.parse(localStorage.getItem('vertice_users') || '{}');
+            if (users[email]) {
+                users[email].blocked = !users[email].blocked;
+                localStorage.setItem('vertice_users', JSON.stringify(users));
+                renderAdminPanel(); // Atualiza a tabela
+            }
+        }
+
+        // --- LÓGICA DE DADOS FINANCEIROS (MANTIDA) ---
+
+        function loadData() {
+            const data = localStorage.getItem(`vertice_stable_${currentUser.email}`);
+            transactions = data ? JSON.parse(data) : [];
+        }
+
+        function saveData() {
+            localStorage.setItem(`vertice_stable_${currentUser.email}`, JSON.stringify(transactions));
+            renderMonthly();
+            if(!document.getElementById('section-yearly').classList.contains('hidden')) renderYearly();
+        }
+
+        function clearAllData() {
+            if(confirm("Deseja realmente apagar TODOS os registros?")) {
+                transactions = [];
+                saveData();
+            }
+        }
+
+        function addEntry() {
+            const desc = document.getElementById('desc-input').value;
+            const val = parseFloat(document.getElementById('val-input').value);
+            const category = document.getElementById('category-input').value;
+            const recurrence = document.getElementById('recurrence-input').value;
+            const inMonth = parseInt(document.getElementById('input-month').value);
+            const inYear = parseInt(document.getElementById('input-year').value);
+            
+            if(!desc || isNaN(val)) return;
+
+            if (editingId) {
+                const idx = transactions.findIndex(t => t.id === editingId);
+                if (idx !== -1) {
+                    transactions[idx] = { ...transactions[idx], desc, val, category, month: inMonth, year: inYear };
+                }
+                editingId = null;
+            } else {
+                const timestamp = Date.now();
+                if (recurrence === 'once') {
+                    transactions.push({ id: timestamp, desc, val, category, paid: false, month: inMonth, year: inYear });
+                } else if (recurrence === 'monthly') {
+                    for (let m = inMonth; m < 12; m++) {
+                        transactions.push({ id: timestamp + m, desc, val, category, paid: false, month: m, year: inYear });
+                    }
+                } else if (recurrence === 'installment') {
+                    const numParcels = parseInt(document.getElementById('parcel-input').value);
+                    let cM = inMonth; let cY = inYear;
+                    for (let i = 1; i <= numParcels; i++) {
+                        transactions.push({ id: timestamp + i, desc: `${desc} [${i}/${numParcels}]`, val: val / numParcels, category, paid: false, month: cM, year: cY });
+                        cM++; if (cM > 11) { cM = 0; cY++; }
+                    }
+                }
+            }
+            resetForm();
+            saveData();
+        }
+
+        function resetForm() {
+            editingId = null;
+            document.getElementById('desc-input').value = '';
+            document.getElementById('val-input').value = '';
+            document.getElementById('input-month').value = selectedMonth;
+            document.getElementById('input-year').value = selectedYear;
+            document.getElementById('form-title').innerText = "Novo Registro Financeiro";
+            document.getElementById('confirm-btn').innerText = "Confirmar Lançamento";
+            document.getElementById('cancel-edit-btn').classList.add('hidden');
+            document.getElementById('recurrence-input').disabled = false;
+            document.getElementById('recurrence-input').value = 'once';
+            toggleParcelField();
+        }
+
+        function editItem(id) {
+            const item = transactions.find(t => t.id === id);
+            if (!item) return;
+            editingId = id;
+            document.getElementById('desc-input').value = item.desc;
+            document.getElementById('val-input').value = item.val;
+            document.getElementById('category-input').value = item.category;
+            document.getElementById('input-month').value = item.month;
+            document.getElementById('input-year').value = item.year;
+            document.getElementById('form-title').innerText = "Editando Registro";
+            document.getElementById('confirm-btn').innerText = "Salvar Alterações";
+            document.getElementById('cancel-edit-btn').classList.remove('hidden');
+            document.getElementById('recurrence-input').disabled = true;
+            window.scrollTo({ top: 300, behavior: 'smooth' });
+        }
+
+        function togglePaid(id) {
+            const item = transactions.find(t => t.id == id);
+            if(item) { item.paid = !item.paid; saveData(); }
+        }
+
+        function deleteItem(id) {
+            transactions = transactions.filter(t => t.id !== id);
+            saveData();
+        }
+
+        function renderMonthly() {
+            const list = document.getElementById('monthly-list');
+            const sortOrder = document.getElementById('sort-order').value;
+            list.innerHTML = '';
+            
+            let filtered = transactions.filter(t => t.month === selectedMonth && t.year === selectedYear);
+            
+            if (sortOrder === 'desc') filtered.sort((a, b) => b.val - a.val);
+            else if (sortOrder === 'asc') filtered.sort((a, b) => a.val - b.val);
+            else filtered.sort((a, b) => b.id - a.id);
+
+            let income = 0, equity = 0, totalToPay = 0, paid = 0, pending = 0;
+            
+            filtered.forEach(t => {
+                const isIncome = t.category === 'Renda';
+                const isEquity = (t.category === 'Poupança' || t.category === 'Investimento');
+
+                if(isIncome) income += t.val;
+                else if (isEquity) equity += t.val;
+                else {
+                    totalToPay += t.val;
+                    if(t.paid) paid += t.val; else pending += t.val;
+                }
+
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between p-6 bubble-card border border-white/5 ${t.paid ? 'is-paid' : ''}`;
+                div.innerHTML = `
+                    <div class="flex items-center gap-5">
+                        <div onclick="togglePaid(${t.id})" class="cursor-pointer w-10 h-10 rounded-full flex items-center justify-center border ${t.paid ? 'bg-emerald-500 border-emerald-500' : 'border-zinc-600 hover:border-emerald-500'} transition-all">
+                            ${t.paid ? '<svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>' : ''}
+                        </div>
+                        <div>
+                            <p class="font-bold text-sm text-white">${t.desc}</p>
+                            <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold bg-white/5 px-2 py-1 rounded mt-1 inline-block">${t.category}</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-base ${isIncome ? 'text-emerald-400' : isEquity ? 'text-amber-400' : 'text-white'}">
+                            ${isIncome || isEquity ? '+' : '-'} R$ ${t.val.toFixed(2)}
+                        </p>
+                        <div class="flex gap-3 justify-end mt-2 opacity-50 hover:opacity-100 transition-opacity">
+                            <button onclick="editItem(${t.id})" class="text-indigo-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                            <button onclick="deleteItem(${t.id})" class="text-rose-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        </div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+
+            document.getElementById('display-income').innerText = `R$ ${income.toFixed(2)}`;
+            document.getElementById('display-equity').innerText = `R$ ${equity.toFixed(2)}`;
+            document.getElementById('display-total').innerText = `R$ ${totalToPay.toFixed(2)}`;
+            document.getElementById('display-paid').innerText = `R$ ${paid.toFixed(2)}`;
+            document.getElementById('display-pending').innerText = `R$ ${pending.toFixed(2)}`;
+            
+            const balance = income - paid; 
+            const balanceEl = document.getElementById('display-balance');
+            balanceEl.innerText = `R$ ${balance.toFixed(2)}`;
+            
+            const cardBalance = document.getElementById('card-balance');
+            if(balance >= 0) {
+                cardBalance.className = "bubble-card p-6 border-l-4 border-l-emerald-500";
+                balanceEl.className = "text-2xl font-bold text-emerald-400";
+            } else {
+                cardBalance.className = "bubble-card p-6 border-l-4 border-l-rose-500";
+                balanceEl.className = "text-2xl font-bold text-rose-400";
+            }
+        }
+
+        function renderYearly() {
+            document.getElementById('yearly-year-title').innerText = selectedYear;
+            const tbody = document.getElementById('yearly-body');
+            tbody.innerHTML = '';
+
+            const categories = ["Renda", "Despesa Fixa", "Despesa Variável", "Investimento", "Poupança"];
+            const currentYearData = transactions.filter(t => t.year === selectedYear);
+
+            categories.forEach(cat => {
+                let monthlyTotals = Array(12).fill(0);
+                let catTotal = 0;
+                let catItems = [];
+
+                currentYearData.filter(t => t.category === cat).forEach(t => {
+                    monthlyTotals[t.month] += t.val;
+                    catTotal += t.val;
+                    catItems.push(t);
+                });
+
+                const isExpanded = expandedCategories.has(cat);
+                const rowClass = cat === 'Renda' ? 'text-emerald-400' : cat.includes('Despesa') ? 'text-rose-400' : 'text-amber-400';
+
+                // Linha Principal
+                const tr = document.createElement('tr');
+                tr.className = "row-category hover:bg-white/5 transition-colors cursor-pointer";
+                tr.onclick = (e) => {
+                    if(e.target.tagName === 'TD' || e.target.tagName === 'SPAN') {
+                        if(expandedCategories.has(cat)) expandedCategories.delete(cat);
+                        else expandedCategories.add(cat);
+                        renderYearly();
+                    }
+                };
+                
+                let cells = `
+                    <td class="font-bold text-[11px] uppercase ${rowClass}">
+                        <span class="expand-btn">${isExpanded ? '▼' : '▶'}</span> ${cat}
+                    </td>`;
+                
+                monthlyTotals.forEach(val => {
+                    cells += `<td class="text-[10px] ${val > 0 ? 'text-white' : 'text-zinc-600'}">R$ ${val.toFixed(0)}</td>`;
+                });
+                
+                cells += `<td class="font-bold text-[11px] text-white bg-white/5">R$ ${catTotal.toFixed(0)}</td>`;
+                tr.innerHTML = cells;
+                tbody.appendChild(tr);
+
+                // Linhas de Detalhe (Expandidas)
+                if (isExpanded) {
+                    const uniqueDesc = [...new Set(catItems.map(i => i.desc))];
+                    uniqueDesc.forEach(desc => {
+                        let descTotals = Array(12).fill(0);
+                        let descTotal = 0;
+                        catItems.filter(i => i.desc === desc).forEach(i => {
+                            descTotals[i.month] += i.val;
+                            descTotal += i.val;
+                        });
+
+                        const trDetail = document.createElement('tr');
+                        trDetail.className = "row-detail animate-section";
+                        let dCells = `<td class="pl-8 text-zinc-500 italic border-l border-white/10">${desc}</td>`;
+                        descTotals.forEach(val => {
+                             dCells += `<td class="${val > 0 ? 'text-zinc-400' : 'text-zinc-800'}">R$ ${val.toFixed(0)}</td>`;
+                        });
+                        dCells += `<td class="text-zinc-400 font-bold">R$ ${descTotal.toFixed(0)}</td>`;
+                        trDetail.innerHTML = dCells;
+                        tbody.appendChild(trDetail);
+                    });
+                }
+            });
+        }
+    </script>
+</body>
+</html>
