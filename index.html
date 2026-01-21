@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -10,7 +10,6 @@ import {
   getFirestore, 
   collection, 
   doc, 
-  setDoc, 
   onSnapshot, 
   query,
   addDoc,
@@ -18,32 +17,49 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { 
-  User, 
-  Cloud, 
-  CloudOff, 
   Plus, 
   Trash2, 
+  TrendingUp, 
+  TrendingDown, 
+  Wallet, 
+  Calendar, 
+  CheckCircle2, 
+  Circle, 
+  ChevronDown, 
+  ChevronUp,
+  Cloud,
   RefreshCw,
-  LayoutDashboard,
-  Settings,
-  LogOut
+  LayoutDashboard
 } from 'lucide-react';
 
-// Firebase configuration using environment variables
+// Firebase configuration
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'meu-app-robusto';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'vertice-financeiro-v2';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState([]);
-  const [newItemName, setNewItemName] = useState('');
-  const [syncStatus, setSyncStatus] = useState('connecting'); // connecting, synced, error
+  const [transactions, setTransactions] = useState([]);
+  const [syncStatus, setSyncStatus] = useState('connecting');
+  
+  // Form State
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [type, setType] = useState('despesa');
+  const [category, setCategory] = useState('Moradia');
+  const [isAnnualView, setIsAnnualView] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState(null);
 
-  // RULE 3: Auth Before Queries
+  const categories = {
+    receita: ['Salário', 'Investimentos', 'Extra'],
+    despesa: ['Moradia', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Outros'],
+    patrimonio: ['Reserva', 'Ações/FIIs', 'Cripto', 'Outros']
+  };
+
+  // Auth Initialization
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -52,216 +68,273 @@ export default function App() {
         } else {
           await signInAnonymously(auth);
         }
-      } catch (error) {
-        console.error("Auth Error:", error);
+      } catch (err) {
         setSyncStatus('error');
       }
     };
-
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
-  // Firestore Data Sync (RULE 1 & 2)
+  // Firestore Real-time Sync
   useEffect(() => {
     if (!user) return;
-
-    // RULE 1: Strict Paths - Using private user data path
-    const itemsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'user_items');
-    
-    // RULE 2: Simple Query
-    const q = query(itemsCollection);
-
+    const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
     setSyncStatus('syncing');
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setItems(data);
-        setSyncStatus('synced');
-      },
-      (error) => {
-        console.error("Firestore Error:", error);
-        setSyncStatus('error');
-      }
-    );
+    
+    const unsubscribe = onSnapshot(query(colRef), (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setTransactions(data.sort((a, b) => new Date(b.date) - new Date(a.date)));
+      setSyncStatus('synced');
+    }, () => setSyncStatus('error'));
 
     return () => unsubscribe();
   }, [user]);
 
-  const addItem = async (e) => {
+  // Financial Calculations
+  const stats = useMemo(() => {
+    return transactions.reduce((acc, curr) => {
+      const val = parseFloat(curr.amount) || 0;
+      if (curr.type === 'receita') acc.incomes += val;
+      else if (curr.type === 'despesa') {
+        if (curr.completed) acc.paid += val;
+        else acc.toPay += val;
+      } else if (curr.type === 'patrimonio') acc.equity += val;
+      return acc;
+    }, { incomes: 0, paid: 0, toPay: 0, equity: 0 });
+  }, [transactions]);
+
+  // Actions
+  const handleAddTransaction = async (e) => {
     e.preventDefault();
-    if (!newItemName.trim() || !user) return;
+    if (!description || !amount || !user) return;
 
     try {
-      const itemsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'user_items');
-      await addDoc(itemsCollection, {
-        name: newItemName,
-        createdAt: new Date().toISOString(),
+      const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'transactions');
+      await addDoc(colRef, {
+        description,
+        amount: parseFloat(amount),
+        type,
+        category,
+        date: new Date().toISOString(),
         completed: false
       });
-      setNewItemName('');
-    } catch (error) {
-      console.error("Add Error:", error);
+      setDescription('');
+      setAmount('');
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const toggleComplete = async (item) => {
-    if (!user) return;
-    try {
-      const itemDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'user_items', item.id);
-      await updateDoc(itemDoc, { completed: !item.completed });
-    } catch (error) {
-      console.error("Update Error:", error);
-    }
+  const toggleStatus = async (item) => {
+    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', item.id);
+    await updateDoc(docRef, { completed: !item.completed });
   };
 
-  const deleteItem = async (id) => {
-    if (!user) return;
-    try {
-      const itemDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'user_items', id);
-      await deleteDoc(itemDoc);
-    } catch (error) {
-      console.error("Delete Error:", error);
-    }
+  const deleteTransaction = async (id) => {
+    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id);
+    await deleteDoc(docRef);
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 text-gray-600">
-        <div className="text-center">
-          <RefreshCw className="w-10 h-10 animate-spin mx-auto mb-4 text-blue-500" />
-          <p className="text-lg font-medium">Iniciando ambiente seguro...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-slate-950 text-white">
+      <RefreshCw className="animate-spin mr-2" /> Carregando sua nuvem financeira...
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 font-sans text-gray-900 dark:text-gray-100 transition-colors">
-      {/* Header */}
-      <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-500 rounded-lg text-white">
-              <LayoutDashboard size={20} />
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-10">
+      {/* Navbar */}
+      <nav className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
+              <LayoutDashboard size={20} className="text-white" />
             </div>
-            <h1 className="font-bold text-xl tracking-tight hidden sm:block">CloudManager V2</h1>
+            <span className="font-bold text-xl tracking-tight text-white">Vértice <span className="text-indigo-400">Financeiro</span></span>
           </div>
-
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-full text-xs font-medium">
-              {syncStatus === 'synced' ? (
-                <><Cloud size={14} className="text-green-500" /> <span className="text-green-600">Nuvem Ativa</span></>
-              ) : syncStatus === 'error' ? (
-                <><CloudOff size={14} className="text-red-500" /> <span className="text-red-600">Erro de Sinc</span></>
-              ) : (
-                <><RefreshCw size={14} className="animate-spin text-blue-500" /> <span className="text-blue-500">Sincronizando...</span></>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600">
-                <User size={16} />
-              </div>
-              <span className="text-sm font-medium hidden md:block">ID: {user?.uid.substring(0, 8)}...</span>
-            </div>
+          <div className="flex items-center gap-3 bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-700">
+            {syncStatus === 'synced' ? <Cloud size={14} className="text-emerald-400" /> : <RefreshCw size={14} className="animate-spin text-indigo-400" />}
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nuvem Ativa</span>
           </div>
         </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto p-6">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          
-          {/* Sidebar / Info */}
-          <div className="md:col-span-4 space-y-4">
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
-              <h2 className="font-semibold mb-3 flex items-center gap-2">
-                <Settings size={18} className="text-gray-400" /> 
-                Status da Conta
-              </h2>
-              <div className="space-y-3">
-                <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-                  <p className="text-[10px] uppercase text-gray-400 font-bold mb-1">UID Completo</p>
-                  <code className="text-[11px] break-all text-blue-600 dark:text-blue-400">{user?.uid}</code>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-500">Itens na nuvem:</span>
-                  <span className="font-bold">{items.length}</span>
-                </div>
-              </div>
+      <main className="max-w-6xl mx-auto p-4 lg:p-8 space-y-8">
+        {/* Dashboard Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <TrendingUp size={64} className="text-emerald-500" />
+            </div>
+            <p className="text-slate-400 text-sm font-medium">Receita Mensal</p>
+            <h3 className="text-3xl font-bold text-white mt-1">R$ {stats.incomes.toLocaleString('pt-BR')}</h3>
+            <div className="mt-4 flex items-center gap-2 text-emerald-400 text-xs font-bold">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Disponível
             </div>
           </div>
 
-          {/* Action Area */}
-          <div className="md:col-span-8 space-y-6">
-            {/* Input Form */}
-            <form onSubmit={addItem} className="flex gap-2 p-2 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
-              <input
-                type="text"
-                value={newItemName}
-                onChange={(e) => setNewItemName(e.target.value)}
-                placeholder="O que você deseja salvar na nuvem?"
-                className="flex-1 px-4 py-2 bg-transparent focus:outline-none placeholder:text-gray-400"
-              />
-              <button
-                type="submit"
-                className="bg-blue-500 hover:bg-blue-600 text-white p-2.5 rounded-xl transition-all active:scale-95 flex items-center gap-2 font-medium"
-              >
-                <Plus size={20} />
-                <span className="hidden sm:inline pr-1">Adicionar</span>
-              </button>
-            </form>
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <TrendingDown size={64} className="text-rose-500" />
+            </div>
+            <p className="text-slate-400 text-sm font-medium">Contas a Pagar</p>
+            <h3 className="text-3xl font-bold text-white mt-1 text-rose-400">R$ {stats.toPay.toLocaleString('pt-BR')}</h3>
+            <p className="text-[10px] text-slate-500 mt-4 uppercase font-bold tracking-widest">Pago: R$ {stats.paid.toLocaleString('pt-BR')}</p>
+          </div>
 
-            {/* List */}
+          <div className="bg-indigo-600/10 border border-indigo-500/30 p-6 rounded-3xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Wallet size={64} className="text-indigo-400" />
+            </div>
+            <p className="text-indigo-300 text-sm font-medium">Patrimônio Acumulado</p>
+            <h3 className="text-3xl font-bold text-white mt-1">R$ {stats.equity.toLocaleString('pt-BR')}</h3>
+            <div className="mt-4 bg-indigo-500/20 w-fit px-2 py-1 rounded text-[10px] font-bold text-indigo-300 uppercase">Foco em Crescimento</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Form Side */}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-xl">
+              <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+                <Plus className="text-indigo-500" /> Novo Lançamento
+              </h2>
+              <form onSubmit={handleAddTransaction} className="space-y-4">
+                <div className="flex p-1 bg-slate-950 rounded-2xl border border-slate-800">
+                  {['receita', 'despesa', 'patrimonio'].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => { setType(t); setCategory(categories[t][0]); }}
+                      className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-xl transition-all ${type === t ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Descrição</label>
+                  <input
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="Ex: Aluguel, Salário..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Valor</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors"
+                      placeholder="0,00"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Categoria</label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 transition-colors appearance-none"
+                    >
+                      {categories[type].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-indigo-600/20 mt-4"
+                >
+                  Adicionar à Nuvem
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* List Side */}
+          <div className="lg:col-span-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setIsAnnualView(false)}
+                  className={`text-sm font-bold uppercase tracking-widest pb-1 transition-all ${!isAnnualView ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-slate-500'}`}
+                >
+                  Transações
+                </button>
+                <button 
+                  onClick={() => setIsAnnualView(true)}
+                  className={`text-sm font-bold uppercase tracking-widest pb-1 transition-all ${isAnnualView ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-slate-500'}`}
+                >
+                  Visão Anual
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-3">
-              {items.length === 0 ? (
-                <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-                  <Cloud className="mx-auto w-12 h-12 text-gray-300 mb-3" />
-                  <p className="text-gray-500 font-medium">Sua nuvem está vazia.</p>
-                  <p className="text-sm text-gray-400">Adicione itens para começar a sincronização.</p>
+              {transactions.length === 0 ? (
+                <div className="text-center py-20 bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-800">
+                  <Calendar className="mx-auto w-12 h-12 text-slate-700 mb-4" />
+                  <p className="text-slate-500 font-medium">Nenhum lançamento encontrado na nuvem.</p>
                 </div>
               ) : (
-                items.map((item) => (
+                transactions.map((item) => (
                   <div 
                     key={item.id}
-                    className="group flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-all hover:border-blue-200 dark:hover:border-blue-900"
+                    className="group bg-slate-900 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl flex items-center justify-between transition-all"
                   >
                     <div className="flex items-center gap-4">
                       <button 
-                        onClick={() => toggleComplete(item)}
-                        className={`w-6 h-6 rounded-full border-2 transition-colors flex items-center justify-center
-                          ${item.completed 
-                            ? 'bg-green-500 border-green-500 text-white' 
-                            : 'border-gray-300 dark:border-gray-600 hover:border-blue-400'}`}
+                        onClick={() => toggleStatus(item)}
+                        className={`transition-colors ${item.completed ? 'text-emerald-500' : 'text-slate-600 hover:text-indigo-400'}`}
                       >
-                        {item.completed && <div className="w-2 h-2 bg-white rounded-full" />}
+                        {item.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
                       </button>
-                      <span className={`${item.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200'} font-medium`}>
-                        {item.name}
-                      </span>
+                      <div>
+                        <h4 className={`font-bold ${item.completed ? 'line-through text-slate-500' : 'text-white'}`}>{item.description}</h4>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                            item.type === 'receita' ? 'bg-emerald-500/10 text-emerald-500' : 
+                            item.type === 'patrimonio' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-rose-500/10 text-rose-500'
+                          }`}>
+                            {item.category}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            {new Date(item.date).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    
-                    <button
-                      onClick={() => deleteItem(item.id)}
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <div className="flex items-center gap-6">
+                      <span className={`font-bold text-lg ${
+                        item.type === 'receita' ? 'text-emerald-400' : 
+                        item.type === 'patrimonio' ? 'text-indigo-400' : 'text-slate-200'
+                      }`}>
+                        {item.type === 'despesa' ? '-' : '+'} R$ {item.amount.toLocaleString('pt-BR')}
+                      </span>
+                      <button 
+                        onClick={() => deleteTransaction(item.id)}
+                        className="opacity-0 group-hover:opacity-100 p-2 text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
             </div>
           </div>
-
         </div>
       </main>
     </div>
