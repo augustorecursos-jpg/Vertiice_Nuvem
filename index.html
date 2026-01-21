@@ -454,6 +454,11 @@
         // --- CONFIGURAÇÃO DE ADMIN EXCLUSIVA ---
         const MASTER_EMAIL = "arconsultoriaa@outlook.com"; 
 
+        // --- FUNÇÃO DE FORMATAÇÃO DE MOEDA PADRÃO BRASIL ---
+        const formatCurrency = (value) => {
+            return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        };
+
         let currentUser = null;
         let transactions = [];
         let isRegisterMode = false;
@@ -790,7 +795,7 @@
                     </div>
                     <div class="text-right">
                         <p class="font-bold text-base ${isIncome ? 'text-emerald-400' : isEquity ? 'text-amber-400' : 'text-white'}">
-                            ${isIncome || isEquity ? '+' : '-'} R$ ${t.val.toFixed(2)}
+                            ${isIncome || isEquity ? '+' : '-'} ${formatCurrency(t.val)}
                         </p>
                         <div class="flex gap-3 justify-end mt-2 opacity-50 hover:opacity-100 transition-opacity">
                             <button onclick="editItem(${t.id})" class="text-indigo-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
@@ -801,15 +806,15 @@
                 list.appendChild(div);
             });
 
-            document.getElementById('display-income').innerText = `R$ ${income.toFixed(2)}`;
-            document.getElementById('display-equity').innerText = `R$ ${equity.toFixed(2)}`;
-            document.getElementById('display-total').innerText = `R$ ${totalToPay.toFixed(2)}`;
-            document.getElementById('display-paid').innerText = `R$ ${paid.toFixed(2)}`;
-            document.getElementById('display-pending').innerText = `R$ ${pending.toFixed(2)}`;
+            document.getElementById('display-income').innerText = formatCurrency(income);
+            document.getElementById('display-equity').innerText = formatCurrency(equity);
+            document.getElementById('display-total').innerText = formatCurrency(totalToPay);
+            document.getElementById('display-paid').innerText = formatCurrency(paid);
+            document.getElementById('display-pending').innerText = formatCurrency(pending);
             
             const balance = income - paid; 
             const balanceEl = document.getElementById('display-balance');
-            balanceEl.innerText = `R$ ${balance.toFixed(2)}`;
+            balanceEl.innerText = formatCurrency(balance);
             
             const cardBalance = document.getElementById('card-balance');
             if(balance >= 0) {
@@ -875,10 +880,10 @@
                     </td>`;
                 
                 monthlyTotals.forEach(val => {
-                    cells += `<td class="text-[10px] ${val > 0 ? 'text-white' : 'text-zinc-600'}">R$ ${val.toFixed(0)}</td>`;
+                    cells += `<td class="text-[10px] ${val > 0 ? 'text-white' : 'text-zinc-600'}">${formatCurrency(val)}</td>`;
                 });
                 
-                cells += `<td class="font-bold text-[11px] text-white bg-white/5">R$ ${catTotal.toFixed(0)}</td>`;
+                cells += `<td class="font-bold text-[11px] text-white bg-white/5">${formatCurrency(catTotal)}</td>`;
                 tr.innerHTML = cells;
                 tbody.appendChild(tr);
 
@@ -897,9 +902,9 @@
                         trDetail.className = "row-detail animate-section";
                         let dCells = `<td class="pl-8 text-zinc-500 italic border-l border-white/10">${desc}</td>`;
                         descTotals.forEach(val => {
-                             dCells += `<td class="${val > 0 ? 'text-zinc-400' : 'text-zinc-800'}">R$ ${val.toFixed(0)}</td>`;
+                             dCells += `<td class="${val > 0 ? 'text-zinc-400' : 'text-zinc-800'}">${formatCurrency(val)}</td>`;
                         });
-                        dCells += `<td class="text-zinc-400 font-bold">R$ ${descTotal.toFixed(0)}</td>`;
+                        dCells += `<td class="text-zinc-400 font-bold">${formatCurrency(descTotal)}</td>`;
                         trDetail.innerHTML = dCells;
                         tbody.appendChild(trDetail);
                     });
@@ -913,11 +918,11 @@
             
             monthlyBalances.forEach(val => {
                 let colorClass = val === 0 ? 'text-zinc-600' : val > 0 ? 'text-emerald-400' : 'text-rose-400';
-                totalCells += `<td class="p-3 text-[10px] ${colorClass}">R$ ${val.toFixed(0)}</td>`;
+                totalCells += `<td class="p-3 text-[10px] ${colorClass}">${formatCurrency(val)}</td>`;
             });
             
             let totalColorClass = totalYearBalance === 0 ? 'text-zinc-500' : totalYearBalance > 0 ? 'text-emerald-400' : 'text-rose-400';
-            totalCells += `<td class="p-3 text-[11px] ${totalColorClass} rounded-r-2xl">R$ ${totalYearBalance.toFixed(0)}</td>`;
+            totalCells += `<td class="p-3 text-[11px] ${totalColorClass} rounded-r-2xl">${formatCurrency(totalYearBalance)}</td>`;
             
             trTotal.innerHTML = totalCells;
             tbody.appendChild(trTotal);
