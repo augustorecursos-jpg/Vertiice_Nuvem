@@ -615,9 +615,11 @@
                     ? `<span class="bg-rose-500/20 text-rose-400 px-2 py-1 rounded text-[10px] font-bold uppercase">Bloqueado</span>`
                     : `<span class="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded text-[10px] font-bold uppercase">Ativo</span>`;
                 
-                const actionBtn = user.blocked
-                    ? `<button onclick="toggleUserStatus('${email}')" class="text-[10px] font-bold uppercase bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1 rounded transition-colors">Reativar</button>`
-                    : `<button onclick="toggleUserStatus('${email}')" class="text-[10px] font-bold uppercase bg-rose-500 hover:bg-rose-400 text-white px-3 py-1 rounded transition-colors">Bloquear</button>`;
+                const blockBtn = user.blocked
+                    ? `<button onclick="toggleUserStatus('${email}')" class="text-[10px] font-bold uppercase bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1 rounded transition-colors w-20">Reativar</button>`
+                    : `<button onclick="toggleUserStatus('${email}')" class="text-[10px] font-bold uppercase bg-rose-500 hover:bg-rose-400 text-white px-3 py-1 rounded transition-colors w-20">Bloquear</button>`;
+
+                const deleteBtn = `<button onclick="deleteUser('${email}')" class="ml-2 text-[10px] font-bold uppercase bg-zinc-700 hover:bg-rose-600 text-white px-3 py-1 rounded transition-colors" title="Excluir Usuário">Excluir</button>`;
 
                 tr.innerHTML = `
                     <td class="py-4 pl-2 font-medium text-white">${user.name || 'Sem nome'}</td>
@@ -625,7 +627,7 @@
                     <td class="py-4">${user.cpf || '-'}</td>
                     <td class="py-4">${user.phone || '-'}</td>
                     <td class="py-4 text-center">${statusBadge}</td>
-                    <td class="py-4 text-right pr-2">${actionBtn}</td>
+                    <td class="py-4 text-right pr-2 whitespace-nowrap">${blockBtn}${deleteBtn}</td>
                 `;
                 list.appendChild(tr);
             });
@@ -641,6 +643,15 @@
                 users[email].blocked = !users[email].blocked;
                 localStorage.setItem('vertice_users', JSON.stringify(users));
                 renderAdminPanel(); // Atualiza a tabela
+            }
+        }
+
+        function deleteUser(email) {
+            if(confirm(`Tem certeza que deseja excluir o usuário ${email}? Esta ação é permanente e removerá o acesso.`)) {
+                const users = JSON.parse(localStorage.getItem('vertice_users') || '{}');
+                delete users[email];
+                localStorage.setItem('vertice_users', JSON.stringify(users));
+                renderAdminPanel();
             }
         }
 
@@ -818,6 +829,21 @@
             const categories = ["Renda", "Despesa Fixa", "Despesa Variável", "Investimento", "Poupança"];
             const currentYearData = transactions.filter(t => t.year === selectedYear);
 
+            // CALCULAR TOTAIS MENSAIS PARA A LINHA FINAL
+            let monthlyBalances = Array(12).fill(0);
+            let totalYearBalance = 0;
+
+            currentYearData.forEach(t => {
+                if (t.category === 'Renda') {
+                    monthlyBalances[t.month] += t.val;
+                    totalYearBalance += t.val;
+                } else {
+                    // Considera todo o resto como saída de caixa para o cálculo de saldo
+                    monthlyBalances[t.month] -= t.val;
+                    totalYearBalance -= t.val;
+                }
+            });
+
             categories.forEach(cat => {
                 let monthlyTotals = Array(12).fill(0);
                 let catTotal = 0;
@@ -879,6 +905,22 @@
                     });
                 }
             });
+
+            // LINHA FINAL DE SALDO LÍQUIDO
+            const trTotal = document.createElement('tr');
+            trTotal.className = "font-bold bg-white/5 border-t-2 border-white/20";
+            let totalCells = `<td class="p-3 text-[11px] uppercase text-indigo-400 rounded-l-2xl">Saldo Líquido</td>`;
+            
+            monthlyBalances.forEach(val => {
+                let colorClass = val === 0 ? 'text-zinc-600' : val > 0 ? 'text-emerald-400' : 'text-rose-400';
+                totalCells += `<td class="p-3 text-[10px] ${colorClass}">R$ ${val.toFixed(0)}</td>`;
+            });
+            
+            let totalColorClass = totalYearBalance === 0 ? 'text-zinc-500' : totalYearBalance > 0 ? 'text-emerald-400' : 'text-rose-400';
+            totalCells += `<td class="p-3 text-[11px] ${totalColorClass} rounded-r-2xl">R$ ${totalYearBalance.toFixed(0)}</td>`;
+            
+            trTotal.innerHTML = totalCells;
+            tbody.appendChild(trTotal);
         }
     </script>
 </body>
