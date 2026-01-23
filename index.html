@@ -7,6 +7,11 @@
     
     <!-- Bibliotecas Externas -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Flatpickr CSS e JS para date picker customizado -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/pt.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
@@ -58,6 +63,63 @@
             outline: none;
             background: rgba(255, 255, 255, 0.07) !important;
             box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+        /* Estilo específico para input type="date" (usando Flatpickr) */
+        .flatpickr-input {
+            background: var(--input-bg) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+            border-radius: 16px !important;
+            transition: all 0.3s ease;
+            width: 100%;
+            padding: 1rem;
+            font-size: 0.875rem;
+            position: relative;
+        }
+        .flatpickr-input:focus {
+            border-color: var(--accent) !important;
+            outline: none;
+            background: rgba(255, 255, 255, 0.07) !important;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+        /* Adicionar seta para parecer select */
+        .flatpickr-input::after {
+            content: '';
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 4px solid rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+        }
+        /* Personalização do calendário Flatpickr para fundo preto */
+        .flatpickr-calendar {
+            background: #000 !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 16px !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8) !important;
+        }
+        .flatpickr-calendar .flatpickr-day {
+            color: white !important;
+            background: transparent !important;
+        }
+        .flatpickr-calendar .flatpickr-day:hover {
+            background: rgba(99, 102, 241, 0.2) !important;
+        }
+        .flatpickr-calendar .flatpickr-day.selected {
+            background: var(--accent) !important;
+            color: white !important;
+        }
+        .flatpickr-calendar .flatpickr-monthDropdown-months,
+        .flatpickr-calendar .flatpickr-current-month {
+            color: white !important;
+        }
+        .flatpickr-calendar .flatpickr-weekday {
+            color: rgba(255, 255, 255, 0.7) !important;
         }
         /* Checkbox Customizado */
         input[type="checkbox"] {
@@ -124,7 +186,7 @@
         }
         .btn-primary:hover { opacity: 0.9; transform: scale(1.02); }
         .animate-section { animation: slideIn 0.5s ease-out forwards; }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideIn { from: opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .hidden { display: none !important; }
         
         .yearly-table {
@@ -333,6 +395,10 @@
                             <input type="number" id="val-input" placeholder="0,00" class="w-full p-4 text-sm">
                         </div>
                         <div class="md:col-span-2">
+                            <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Data de Vencimento</label>
+                            <input type="text" id="due-date-input" placeholder="Selecione a data..." class="w-full p-4 text-sm">
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="text-[9px] font-bold text-zinc-500 uppercase ml-2 mb-2 block">Mês</label>
                             <select id="input-month" class="w-full p-4 text-sm">
                                 <option value="0">Janeiro</option><option value="1">Fevereiro</option><option value="2">Março</option>
@@ -382,11 +448,12 @@
                     <div class="flex justify-between items-center px-4">
                         <h4 class="text-[10px] font-black uppercase text-zinc-500 tracking-[0.2em]">Fluxo de Caixa Mensal</h4>
                         <div class="flex items-center gap-3">
-                            <span class="text-[9px] font-bold text-zinc-600 uppercase">Ordenar por Valor:</span>
+                            <span class="text-[9px] font-bold text-zinc-600 uppercase">Ordenar por:</span>
                             <select id="sort-order" onchange="renderMonthly()" class="!py-1 !px-3 !text-[10px] !rounded-lg !w-auto">
                                 <option value="newest">Mais Recentes</option>
                                 <option value="desc">Maior Valor</option>
                                 <option value="asc">Menor Valor</option>
+                                <option value="dueDate">Data de Vencimento</option>
                             </select>
                         </div>
                     </div>
@@ -466,12 +533,22 @@
         let expandedCategories = new Set(); 
         let selectedMonth = new Date().getMonth();
         let selectedYear = new Date().getFullYear();
+        let dueDatePicker = null; // Variável para o Flatpickr
 
         window.onload = () => {
             document.getElementById('select-month').value = selectedMonth;
             document.getElementById('select-year').value = selectedYear;
             document.getElementById('input-month').value = selectedMonth;
             document.getElementById('input-year').value = selectedYear;
+            
+            // Inicializar Flatpickr para o campo de data de vencimento
+            dueDatePicker = flatpickr("#due-date-input", {
+                dateFormat: "d/m/Y",
+                locale: "pt",
+                theme: "dark",
+                allowInput: true,
+                placeholder: "Selecione a data..."
+            });
         };
 
         // --- FUNÇÕES DE MODAL TERMOS ---
@@ -683,6 +760,7 @@
         function addEntry() {
             const desc = document.getElementById('desc-input').value;
             const val = parseFloat(document.getElementById('val-input').value);
+            const dueDate = dueDatePicker.selectedDates.length > 0 ? dueDatePicker.selectedDates[0].toISOString().split('T')[0] : '';
             const category = document.getElementById('category-input').value;
             const recurrence = document.getElementById('recurrence-input').value;
             const inMonth = parseInt(document.getElementById('input-month').value);
@@ -693,22 +771,22 @@
             if (editingId) {
                 const idx = transactions.findIndex(t => t.id === editingId);
                 if (idx !== -1) {
-                    transactions[idx] = { ...transactions[idx], desc, val, category, month: inMonth, year: inYear };
+                    transactions[idx] = { ...transactions[idx], desc, val, dueDate, category, month: inMonth, year: inYear };
                 }
                 editingId = null;
             } else {
                 const timestamp = Date.now();
                 if (recurrence === 'once') {
-                    transactions.push({ id: timestamp, desc, val, category, paid: false, month: inMonth, year: inYear });
+                    transactions.push({ id: timestamp, desc, val, dueDate, category, paid: false, month: inMonth, year: inYear });
                 } else if (recurrence === 'monthly') {
                     for (let m = inMonth; m < 12; m++) {
-                        transactions.push({ id: timestamp + m, desc, val, category, paid: false, month: m, year: inYear });
+                        transactions.push({ id: timestamp + m, desc, val, dueDate, category, paid: false, month: m, year: inYear });
                     }
                 } else if (recurrence === 'installment') {
                     const numParcels = parseInt(document.getElementById('parcel-input').value);
                     let cM = inMonth; let cY = inYear;
                     for (let i = 1; i <= numParcels; i++) {
-                        transactions.push({ id: timestamp + i, desc: `${desc} [${i}/${numParcels}]`, val: val / numParcels, category, paid: false, month: cM, year: cY });
+                        transactions.push({ id: timestamp + i, desc: `${desc} [${i}/${numParcels}]`, val: val / numParcels, dueDate, category, paid: false, month: cM, year: cY });
                         cM++; if (cM > 11) { cM = 0; cY++; }
                     }
                 }
@@ -721,6 +799,7 @@
             editingId = null;
             document.getElementById('desc-input').value = '';
             document.getElementById('val-input').value = '';
+            dueDatePicker.clear();
             document.getElementById('input-month').value = selectedMonth;
             document.getElementById('input-year').value = selectedYear;
             document.getElementById('form-title').innerText = "Novo Registro Financeiro";
@@ -737,6 +816,11 @@
             editingId = id;
             document.getElementById('desc-input').value = item.desc;
             document.getElementById('val-input').value = item.val;
+            if (item.dueDate) {
+                dueDatePicker.setDate(item.dueDate);
+            } else {
+                dueDatePicker.clear();
+            }
             document.getElementById('category-input').value = item.category;
             document.getElementById('input-month').value = item.month;
             document.getElementById('input-year').value = item.year;
@@ -766,6 +850,11 @@
             
             if (sortOrder === 'desc') filtered.sort((a, b) => b.val - a.val);
             else if (sortOrder === 'asc') filtered.sort((a, b) => a.val - b.val);
+            else if (sortOrder === 'dueDate') filtered.sort((a, b) => {
+                const aDate = a.dueDate ? new Date(a.dueDate) : new Date('9999-12-31');
+                const bDate = b.dueDate ? new Date(b.dueDate) : new Date('9999-12-31');
+                return aDate - bDate;
+            });
             else filtered.sort((a, b) => b.id - a.id);
 
             let income = 0, equity = 0, totalToPay = 0, paid = 0, pending = 0;
@@ -783,6 +872,7 @@
 
                 const div = document.createElement('div');
                 div.className = `flex items-center justify-between p-6 bubble-card border border-white/5 ${t.paid ? 'is-paid' : ''}`;
+                const dueDateDisplay = t.dueDate ? new Date(t.dueDate).toLocaleDateString('pt-BR') : 'Não informado';
                 div.innerHTML = `
                     <div class="flex items-center gap-5">
                         <div onclick="togglePaid(${t.id})" class="cursor-pointer w-10 h-10 rounded-full flex items-center justify-center border ${t.paid ? 'bg-emerald-500 border-emerald-500' : 'border-zinc-600 hover:border-emerald-500'} transition-all">
@@ -791,6 +881,7 @@
                         <div>
                             <p class="font-bold text-sm text-white">${t.desc}</p>
                             <span class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold bg-white/5 px-2 py-1 rounded mt-1 inline-block">${t.category}</span>
+                            <p class="text-[9px] text-zinc-400 mt-1">Vence em: ${dueDateDisplay}</p>
                         </div>
                     </div>
                     <div class="text-right">
